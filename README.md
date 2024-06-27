@@ -35,4 +35,4 @@ Encrypt
 
 ## Notes
 
-Tested on MacOS, Debian, FreeBSD, pfSense. Let me know of any issues.
+Tested on macOS, Debian, FreeBSD, pfSense. Let me know of any issues.
