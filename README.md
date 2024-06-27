@@ -11,7 +11,7 @@ There are three methods:
 The openssl commands can be cumbersome, especially if you don't know the encryption method. You can decrypt the config on the firewall:
 
 ```bash
-pfSsh.php playback cryptconfig decrypt /root/config-encrypted.xml /root/dencryptedfile.xml
+pfSsh.php playback cryptconfig decrypt config-encrypted.xml config-decrypted.xml
 ```
 
 The tool will try to decrypt the file with the current openssl settings, it will then move to old, and then deprecated. If it fails to decrypt the file it will assume the password is wrong. To encrypt files pass the `-e` flag. Files will be encrypted with the current settings `-md sha256 -pbkdf2 -iter 500000`.
