@@ -1,0 +1,125 @@
+#!/usr/bin/env sh
+
+usage() {
+    local name=${0##*/}
+    echo "Usage:"
+    echo
+    echo "Decrypt (default)"
+    echo "  ${name} encrypted-config.xml"
+    echo
+    echo "Encrypt"
+    echo "  ${name} -e config.xml"
+    exit 1
+}
+
+if [ "${1}" = "" ] ||
+    [ "${1}" = "-h" ] ||
+    [ "${1}" = "help" ] ||
+    [ "${1}" = "-help" ] ||
+    [ "${1}" = "--help" ]; then
+    usage
+fi
+
+filecheck() {
+    # check input file is type ASCII
+    if [ "$(file "$1" | grep -io "ASCII")" != "ASCII" ]; then
+        echo "cfcrypt: $1 does not appear to be ASCII config file"
+        exit 1
+    fi
+
+    # check for config.xml
+    if [ "$(head -1 "$1")" != "---- BEGIN config.xml ----" ] || [ "$(tail -1 "$1")" != "---- END config.xml ----" ]; then
+        echo "cfcrypt: $1 does not appear to contain an encrypted config.xml."
+        exit 1
+    fi
+
+    if [ -f decrypt-"$config" ]; then
+        echo "cfcrypt: output file decrypt-$config exists."
+        exit 1
+    fi
+}
+
+read_password() {
+    pass="$(
+        # always read from the tty even when redirected:
+        exec </dev/tty || exit # || exit only needed for bash
+
+        # save current tty settings:
+        tty_settings=$(stty -g) || exit
+
+        # schedule restore of the settings on exit of that subshell
+        # or on receiving SIGINT or SIGTERM:
+        trap 'stty "$tty_settings"' EXIT INT TERM
+
+        # disable terminal local echo
+        stty -echo || exit
+
+        # prompt on tty
+        printf "enter AES-256-CBC encryption password:" >/dev/tty
+
+        # read password as one line, record exit status
+        IFS= read -r input
+        ret=$?
+
+        # display a newline to visually acknowledge the entered password
+        echo >/dev/tty
+
+        # return the password for $REPLY
+        printf '%s\n' "$input"
+        exit "$ret"
+    )"
+}
+
+# openssl encrypt
+encrypt_file() {
+    exml=$(openssl enc -e -a -aes-256-cbc -in "$2" -salt -md sha256 -pbkdf2 -iter 500000)
+    echo "---- BEGIN config.xml ----\n" "$exml" "\n---- END config.xml ----" >"$config".enc
+    echo "encrypted file: $config.enc"
+    exit 0
+}
+
+# openssl decrypt
+ssl_run() {
+    openssl enc -d -a -aes-256-cbc -in "$1" -out decrypt-"$config" -pass pass:"$pass" -salt -md $flags 2>/dev/null
+    return=$?
+}
+
+# encrypt with -e
+if [ "$1" = '-e' ]; then
+    config=$(basename "$2")
+    encrypt_file "$@"
+fi
+
+# output decrypted file to working directory
+config=$(basename "$1")
+
+filecheck "$@"
+read_password
+
+flags="sha256 -pbkdf2 -iter 500000"
+ssl_run "$@"
+if [ $return -eq 0 ]; then
+    echo decrypt successful with sha256 -pbkdf2 -iter 500000
+    echo "filename: decrypt-$config"
+    exit 0
+fi
+
+flags="sha256 -pbkdf2"
+ssl_run "$@"
+if [ $return -eq 0 ]; then
+    echo "$1" successfully decrypted with sha256 pbkdf2 -iter default
+    echo "filename: decrypt-$config"
+    exit 0
+fi
+
+flags="md5"
+ssl_run "$@"
+if [ $return -eq 0 ]; then
+    echo "$1" successfully decrypted with md5
+    echo "filename: decrypt-$config"
+    exit 0
+else
+    rm "$PWD/decrypt-$config"
+    echo "$1 failed to decrypt."
+    echo "Please verify password."
+fi
